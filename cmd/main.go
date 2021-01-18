@@ -29,11 +29,11 @@ func main() {
 	var ca pki.CertificateAuthority
 
 	cfg := &pki.Config{
-		Organization: "Sample Org",
-		Country:      "US",
-		Locality:     "SoHo",
-		StreetAddr:   "",
-		PostalCode:   "10001",
+		Organization: []string{"Sample Org"},
+		Country:      []string{"US"},
+		Locality:     []string{"SoHo"},
+		StreetAddr:   []string{""},
+		PostalCode:   []string{"10001"},
 	}
 
 	if _, err := os.Stat(*certFile); err != nil && errors.Is(err, os.ErrNotExist) {
@@ -49,7 +49,7 @@ func main() {
 	} else {
 		log.Info("reading ca from disk...")
 
-		ca, err = pki.LoadAuthorityFromDisk(*keyFile, *certFile, cfg)
+		ca, err = pki.LoadAuthorityFromDisk(*keyFile, *certFile)
 		if err != nil {
 			log.WithError(err).Fatal("failed to load authority")
 		}

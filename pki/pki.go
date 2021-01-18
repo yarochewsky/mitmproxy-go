@@ -33,11 +33,11 @@ type authority struct {
 
 // Config specifies the CA'S parameters
 type Config struct {
-	Organization string
-	Country      string
-	Locality     string
-	StreetAddr   string
-	PostalCode   string
+	Organization []string
+	Country      []string
+	Locality     []string
+	StreetAddr   []string
+	PostalCode   []string
 }
 
 func (a *authority) Sign(commonName string) (*tls.Certificate, error) {
@@ -87,7 +87,7 @@ func (a *authority) Sign(commonName string) (*tls.Certificate, error) {
 }
 
 // LoadAuthorityFromDisk loads a CA from the key and cert files on disk
-func LoadAuthorityFromDisk(keyFile, certFile string, cfg *Config) (CertificateAuthority, error) {
+func LoadAuthorityFromDisk(keyFile, certFile string) (CertificateAuthority, error) {
 	key, err := load(keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load key: %v", err)
@@ -96,6 +96,24 @@ func LoadAuthorityFromDisk(keyFile, certFile string, cfg *Config) (CertificateAu
 	if err != nil {
 		return nil, fmt.Errorf("failed to load cert: %v", err)
 	}
+
+	c, err := tls.X509KeyPair(cert.Bytes(), key.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse provided key and cert: %v", err)
+	}
+
+	ct, err := x509.ParseCertificate(c.Certificate[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse provided cert: %v", err)
+	}
+
+	cfg := &Config{
+		Organization: ct.Subject.Organization,
+		Locality:     ct.Subject.Locality,
+		StreetAddr:   ct.Subject.StreetAddress,
+		PostalCode:   ct.Subject.PostalCode,
+	}
+
 	return &authority{
 		key:  key,
 		cert: cert,
@@ -158,12 +176,11 @@ func write(filename string, b *bytes.Buffer) error {
 
 func (c *Config) subjectFromConfig() *pkix.Name {
 	return &pkix.Name{
-		Organization:  []string{c.Organization},
-		Country:       []string{c.Country},
-		Province:      []string{""},
-		Locality:      []string{c.Locality},
-		StreetAddress: []string{c.StreetAddr},
-		PostalCode:    []string{c.PostalCode},
+		Organization:  c.Organization,
+		Country:       c.Country,
+		Locality:      c.Locality,
+		StreetAddress: c.StreetAddr,
+		PostalCode:    c.PostalCode,
 	}
 }
 
