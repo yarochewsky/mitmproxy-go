@@ -544,6 +544,7 @@ func (p *ReverseProxy) handleWebSocket(rw http.ResponseWriter, req *http.Request
 		log.WithError(err).Warn("failed to handle websocket upgrade")
 		return
 	}
+	defer conn.Close()
 
 	for {
 		messageType, p, err := conn.ReadMessage()
