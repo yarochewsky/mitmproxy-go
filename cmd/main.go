@@ -10,7 +10,6 @@ import (
 	"mitmproxy/pki"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -80,7 +79,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleProxy(w http.ResponseWriter, r *http.Request) {
-	httputil.NewSingleHostReverseProxy(r.URL).ServeHTTP(w, r)
+	handler.NewSingleHostReverseProxy(r.URL).ServeHTTP(w, r)
 }
 
 func getDomain(hostport string) (string, error) {
@@ -153,8 +152,7 @@ func (s *server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 				return remoteConn, nil
 			},
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				d := &net.Dialer{}
-				return d.DialContext(ctx, "tcp", addr)
+				return (*&net.Dialer{}).DialContext(ctx, "tcp", addr)
 			},
 			// Proxy: func(r *http.Request) (*url.URL, error) {
 			// 	url, err := url.Parse("")
