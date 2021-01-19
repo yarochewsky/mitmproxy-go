@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
+	"mitmproxy/handler"
 	"mitmproxy/pki"
 	"net"
 	"net/http"
@@ -138,7 +138,7 @@ func (s *server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 	}
 	defer remoteConn.Close()
 
-	// establish ourselves to our client, presenting the certificate we signed
+	// establish ourselves to our client, presenting the certifi cate we signed
 	// for the intented destination server
 	clientConn := tls.Server(conn, serverConfig)
 	if err := clientConn.Handshake(); err != nil {
@@ -146,32 +146,70 @@ func (s *server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 	}
 	defer clientConn.Close()
 
-	for {
-		buf := bufio.NewReader(clientConn)
-		remote := bufio.NewReader(remoteConn)
-
-		req, err := http.ReadRequest(buf)
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				return fmt.Errorf("failed to read client request: %v", err)
-			}
-			break
-		}
-
-		if err := req.Write(remoteConn); err != nil {
-			return fmt.Errorf("failed to write request upstream: %v", err)
-		}
-
-		resp, err := http.ReadResponse(remote, req)
-		if err != nil {
-			return fmt.Errorf("failed to read response from upstream: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if err := resp.Write(clientConn); err != nil {
-			return fmt.Errorf("failed to write response to client: %v", err)
-		}
+	rp := &handler.ReverseProxy{
+		Director: httpsDirector,
+		Transport: &http.Transport{
+			DialTLS: func(network, addr string) (net.Conn, error) {
+				return remoteConn, nil
+			},
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				d := &net.Dialer{}
+				return d.DialContext(ctx, "tcp", addr)
+			},
+			// Proxy: func(r *http.Request) (*url.URL, error) {
+			// 	url, err := url.Parse("")
+			// 	if err != nil {
+			// 		return nil, err
+			// 	}
+			// 	return http.ProxyURL(url)(r)
+			// },
+		},
 	}
 
+	ch := make(chan int)
+	wc := &onCloseConn{clientConn, func() { ch <- 0 }}
+
+	http.Serve(&oneShotListener{wc}, rp)
+	<-ch
 	return nil
+}
+
+type oneShotListener struct {
+	c net.Conn
+}
+
+func (l *oneShotListener) Accept() (net.Conn, error) {
+	if l.c == nil {
+		return nil, errors.New("closed")
+	}
+	c := l.c
+	l.c = nil
+	return c, nil
+}
+
+func httpsDirector(r *http.Request) {
+	r.URL.Host = r.Host
+	r.URL.Scheme = "https"
+}
+
+func (l *oneShotListener) Close() error {
+	return nil
+}
+
+func (l *oneShotListener) Addr() net.Addr {
+	return l.c.LocalAddr()
+}
+
+// A onCloseConn implements net.Conn and calls its f on Close.
+type onCloseConn struct {
+	net.Conn
+	f func()
+}
+
+func (c *onCloseConn) Close() error {
+	if c.f != nil {
+		c.f()
+		c.f = nil
+	}
+	return c.Conn.Close()
 }
